@@ -8,6 +8,7 @@ import requests
 import sys
 import os
 from pathlib import Path
+
 #import get_csv as gcsv
 from io import StringIO
 import numpy as np
@@ -16,7 +17,9 @@ import csv
 import io
 from contextlib import closing
 
+from dotenv import load_dotenv
 ###########API tokens, secrets
+load_dotenv()
 username =os.getenv("KOBO_USERNAME")
 passwd = os.getenv("KOBO_PASSWD")
 domain = "https://kobo.humanitarianresponse.info/"
@@ -79,6 +82,7 @@ for uid in  to_download['uids']:
 
 
 ####################add something here so the there's some wait time between making the export and download the data. 
+###implement a sleep thing, just like stata. 
 
 
 ####################get a list of urls to to download and add to to_download
