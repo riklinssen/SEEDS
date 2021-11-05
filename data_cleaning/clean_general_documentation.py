@@ -287,9 +287,9 @@ for datafile in files:
     cleanfilename = 'FFS_profile_' + country + '.csv'
     ffs_profile['filename'] = cleanfilename
     ffs_profile.to_csv(clean_data_path/cleanfilename)
-    #excel output
-    cleanxlsfilename='FFS_profile_' + country + '.xlsx'
-    #ffs_profile.to_excel(clean_data_path/cleanxlsfilename)
+    
+    
+    
 
     ffs_profiles[country] = ffs_profile
 
@@ -369,6 +369,7 @@ for datafile in files:
 # concat ffs_profiles
 FFS_profile_allcountrys = pd.concat(ffs_profiles.values(), ignore_index=True)
 FFS_profile_allcountrys.to_csv(clean_data_path/"FFS_profile_all.csv")
+
 
 # concat & export responseoverviews
 documentation_forms_response = pd.concat(responseoverviews).reset_index(

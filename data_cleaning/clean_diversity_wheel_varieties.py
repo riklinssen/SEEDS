@@ -77,11 +77,60 @@ def seperate_two_cropnames_in_cell(df, columnname, list_of_crops):
     combined=pd.concat([df, cropoccurence[['firstcrop', 'secondcrop']]], axis=1)
     return combined
 
-    
+
+
+def quadrant_indicator(x):
+    """Generates quadrant indicator based on suffix of column name (e.g. ML, MS, FL etc)
+
+    Parameters
+    ----------
+    x : Column name
+        Column name referring to the quadrant can be 'ML', 'MS', 'FL', 'FS', 'vardisa'
+
+    Returns
+    -------
+    string 
+        quadrant in which crop/variety was placed
+    """    
+    if x.endswith('ML'): 
+        return 'many_large'
+    if x.endswith('MS'):
+        return 'many_small' 
+    if x.endswith('FL'):
+        return'few_large' 
+    if x.endswith('FS'):
+        return'few_small'
+    if x.endswith('vardisa'):
+        return'disappear'
+    else:
+        return np.nan
 
     
 
 
+def melt_varietywheel_on_crop(df,idvars, cropnamecol, value_vars):
+    #first melt on crop, then on variety to get the diversity wheel.
+    fullidvars=None
+    fullidvars=idvars+[cropnamecol]      
+    melted_df=pd.melt(df, id_vars=fullidvars, value_vars=value_vars,var_name='quadrant_crop_var', value_name='varietystr').dropna(subset=['varietystr'])
+    #add the quadrants. 
+    melted_df['quadrant']=melted_df['quadrant_crop_var'].apply(quadrant_indicator)
+    # try to split and expand the variety strings (won't work all the time but  at least filter out  comma's & 'and')
+    pattern = '|'.join(['and', ',']) 
+    melted_df['varietystr']=melted_df['varietystr'].str.replace(pattern, '\n', regex=True)
+    #expand multiple varieties in columns
+    exp_varieties=melted_df['varietystr'].str.split('\n', expand=True)
+    exp_varieties.columns=['variety_'+ str(c) for c in exp_varieties.columns]
+    #match the varieties to the original
+    for c in exp_varieties.columns: 
+        melted_df[c]=exp_varieties[c] 
+    ext_idvars=fullidvars+ ['quadrant']
+    #melt again now on variety
+    divwheel=(pd.melt(melted_df,id_vars=ext_idvars, value_vars=[c for c in exp_varieties.columns],  value_name='varietyname')
+     .dropna(subset=['varietyname'])
+     .sort_values(by=['ID_FFS_ID', '_submission_time', 'quadrant'], ascending=False)
+    )
+    return     divwheel
 
 #####FILENAMES & PATHS
 input_data_path = Path(
@@ -137,16 +186,24 @@ for file in files:
     if country=='Guatemala' or country== 'Laos': 
         list_of_crops=[c for c in crops_by_country_d[country]]              
         df=seperate_two_cropnames_in_cell(df=df, columnname=['Select the crops (maximum two) for which you want to list the varieties'], list_of_crops=list_of_crops)
-    # for other countries this is differently structured. Crop is contained in column name, seperate column for each crop and wheel location e.g. DWV_maize_ML (many-large). 
-    #retrieve first and second crop mentioned, 
+        #create diversity wheel for firstcorp. 
+        div1=melt_varietywheel_on_crop(df, idvars=['ID_FFS_ID', 'admin_1', 'admin_1_type', '_submission_time',
+              'subform', 'timing',	'latest_entry', 'country'], cropnamecol='firstcrop', value_vars=['For the selected crop, name the varieties grown by MANY farmers on LARGE plots (write each answer on a new line)',
+    'For the selected crop, name the varieties grown by MANY farmers on SMALL plots (write each answer on a new line)',
+    'For the selected crop, name the varieties grown by FEW farmers on LARGE plots (write each answer on a new line)',
+    'For the selected crop, name the varieties grown by FEW farmers on SMALL plots (write each answer on a new line)',
+    'For the selected crop, name the varieties that have DISAPPEARED (write each answer on a new line)',
+    "Reason for variety's disappearance"])                                                                                                                    
+
 
     #then take the whole range of columns  of DWV_rice etc, melt the df according to quadrant. 
 
     #then remove all cropnames from the col/variables names to get the variety name in each location in the wheel
-        df.to_csv(
-            clean_data_path/str(country + ' Diversity wheel exercise for varieties.csv'))    
+    df.to_csv(
+        clean_data_path/str(country + ' Diversity wheel exercise for varieties.csv'))    
 
 
+####till here div wheel varieties needs to be sorted out in more detail. 
 
 #Guatemala & Laos
 # Select the crops (maximum two) for which you want to list the varieties people select 2 crops
@@ -160,105 +217,106 @@ for file in files:
 
 # Note no data for nepal for the diversity wheel, yet. 
 
-dft=pd.read_csv(r"C:\Users\RikL\Box\MEAL_SDHS\KOBO\Kobo Pillar 1_PPB\Data\clean\PPB\Diversity wheel exercise for varieties\Uganda Diversity wheel exercise for varieties.csv")
-country='Uganda'
-dft=seperate_two_cropnames_in_cell(dft, 'DWV_crops', crops_by_country_d[country])
+# dft=pd.read_csv(r"C:\Users\RikL\Box\MEAL_SDHS\KOBO\Kobo Pillar 1_PPB\Data\clean\PPB\Diversity wheel exercise for varieties\Uganda Diversity wheel exercise for varieties.csv")
+# country='Uganda'
+# dft=seperate_two_cropnames_in_cell(dft, 'DWV_crops', crops_by_country_d[country])
 
-dft.firstcrop
-dft.secondcrop
-#using a tuple in endswith ensures that the list is filled with all occurences (any/or)
-value_vars = [c for c in dft.columns if c.endswith(('ML', 'MS', 'FL', 'FS', 'vardisa'))]
-idvars = ['ID_FFS_ID', 'admin_1', 'admin_1_type', '_submission_time',
-              'subform', 'timing',	'latest_entry', 'country', 'firstcrop']
-value_vars=[c for c in dft.columns if c.endswith(('ML', 'MS', 'FL', 'FS', 'vardisa'))]
-#melt the df (cols to rows) then use dropna to drop all combinations not mentioned. 
-
-melted_df_firstcrop = pd.melt(dft, id_vars=idvars, value_vars=value_vars,
-                        var_name='quadrant_crop_var', value_name='varietystr').dropna(subset=['varietystr'])
-#make quadrant indicator
-melted_df_firstcrop['quadrant']=melted_df_firstcrop['quadrant_crop_var'].apply(quadrant_indicator)
-# try to split and expand the variety strings (won't work all the time but  at least filter out  comma's & 'and')
-pattern = '|'.join(['and', ',']) 
-melted_df_firstcrop['varietystr']=melted_df_firstcrop['varietystr'].str.replace(pattern, '\n', regex=True)
-#expand the variets in columns
-exp_varieties=melted_df_firstcrop['varietystr'].str.split('\n', expand=True)
-#rename cols
-exp_varieties.columns=['variety_'+ str(c) for c in exp_varieties.columns]
-for c in exp_varieties.columns: 
-    melted_df_firstcrop[c]=exp_varieties[c]
-divwheel_firstcrop=pd.melt(melted_df_firstcrop, id_vars=['ID_FFS_ID', 'admin_1', 'admin_1_type', '_submission_time','subform', 'timing',	'latest_entry', 'country', 'firstcrop', 'quadrant'], value_vars=[c for c in exp_varieties.columns], value_name='varietyname').dropna(subset=['varietyname']).sort_values(by=['ID_FFS_ID', '_submission_time', 'quadrant'], ascending=False).drop(['variable'], axis=1).rename(columns={'firstcrop': 'cropname'})
-
-
-
-# add some other indicators that might be relevant. 
-#  number of varietys in quadrant
+# dft.firstcrop
+# dft.secondcrop
+# #using a tuple in endswith ensures that the list is filled with all occurences (any/or)
+# value_vars = [c for c in dft.columns if c.endswith(('ML', 'MS', 'FL', 'FS', 'vardisa'))]
+# idvars = ['ID_FFS_ID', 'admin_1', 'admin_1_type', '_submission_time',
+#               'subform', 'timing',	'latest_entry', 'country', 'firstcrop']
+# value_vars=[c for c in dft.columns if c.endswith(('ML', 'MS', 'FL', 'FS', 'vardisa'))]
+# #melt the df (cols to rows) then use dropna to drop all combinations not mentioned. 
 
 
 
 
-varietynames['quadrant']=varietynames['quadrant_crop_var'].apply(quadrant_indicator)
-
-#make a quadrant indicator. 
-
-idvars = ['ID_FFS_ID', 'admin_1', 'admin_1_type', '_submission_time',
-              'subform', 'timing',	'latest_entry', 'country']
-value_vars=[c for c in dft.columns if c.endswith(('ML', 'MS', 'FL', 'FS', 'vardisa'))]
-
-def melt_varietywheel_on_crop(df,idvars, cropnamecol, value_vars):
-    if any([c for c in idvars not in df.columns]): 
-        print(c, 'not in df')
-    else:
-    fullidvars=None
-    fullidvars=idvars+[cropnamecol]
-         
-    melted_df=pd.melt(dft, id_vars=fullidvars, value_vars=value_vars,var_name='quadrant_crop_var', value_name='varietystr').dropna(subset=['varietystr'])
-    return melted_df
-
-test=melt_varietywheel_on_crop(dft, cropnamecol='firstcrop', idvars=idvars, value_vars=value_vars)
 
 
-def quadrant_indicator(x):
-    if x.endswith('ML'): 
-        return 'many_large'
-    if x.endswith('MS'):
-        return 'many_small' 
-    if x.endswith('FL'):
-        return'few_large' 
-    if x.endswith('FS'):
-        return'few_small'
-    if x.endswith('vardisa'):
-        return'disappear'
-    else:
-        return np.nan
-    
-
-    else:
-        quadrant=np.nan
+# melted_df_firstcrop = pd.melt(dft, id_vars=idvars, value_vars=value_vars,
+#                         var_name='quadrant_crop_var', value_name='varietystr').dropna(subset=['varietystr'])
+# #make quadrant indicator
+# melted_df_firstcrop['quadrant']=melted_df_firstcrop['quadrant_crop_var'].apply(quadrant_indicator)
+# # try to split and expand the variety strings (won't work all the time but  at least filter out  comma's & 'and')
+# pattern = '|'.join(['and', ',']) 
+# melted_df_firstcrop['varietystr']=melted_df_firstcrop['varietystr'].str.replace(pattern, '\n', regex=True)
+# #expand the variets in columns
+# exp_varieties=melted_df_firstcrop['varietystr'].str.split('\n', expand=True)
+# #rename cols
+# exp_varieties.columns=['variety_'+ str(c) for c in exp_varieties.columns]
+# for c in exp_varieties.columns: 
+#     melted_df_firstcrop[c]=exp_varieties[c]
+# divwheel_firstcrop=pd.melt(melted_df_firstcrop, id_vars=['ID_FFS_ID', 'admin_1', 'admin_1_type', '_submission_time','subform', 'timing',	'latest_entry', 'country', 'firstcrop', 'quadrant'], value_vars=[c for c in exp_varieties.columns], value_name='varietyname').dropna(subset=['varietyname']).sort_values(by=['ID_FFS_ID', '_submission_time', 'quadrant'], ascending=False).drop(['variable'], axis=1).rename(columns={'firstcrop': 'cropname'})
 
 
-'DWV_rice_ML'.endswith('ML')
 
-#add the expanded varietis
-df['A'] = df['A'].str.replace(pattern, 'CORP')
+# # add some other indicators that might be relevant. 
+# #  number of varietys in quadrant
+
+
+
+
+# varietynames['quadrant']=varietynames['quadrant_crop_var'].apply(quadrant_indicator)
+
+# #make a quadrant indicator. 
+
+# idvars = ['ID_FFS_ID', 'admin_1', 'admin_1_type', '_submission_time',
+#               'subform', 'timing',	'latest_entry', 'country']
+# value_vars=[c for c in dft.columns if c.endswith(('ML', 'MS', 'FL', 'FS', 'vardisa'))]
+
+
+
+# def melt_varietywheel_on_crop(df,idvars, cropnamecol, value_vars):
+#     #first melt on crop, then on variety to get the diversity wheel.
+#     fullidvars=None
+#     fullidvars=idvars+[cropnamecol]      
+#     melted_df=pd.melt(dft, id_vars=fullidvars, value_vars=value_vars,var_name='quadrant_crop_var', value_name='varietystr').dropna(subset=['varietystr'])
+#     #add the quadrants. 
+#     melted_df['quadrant']=melted_df['quadrant_crop_var'].apply(quadrant_indicator)
+#     # try to split and expand the variety strings (won't work all the time but  at least filter out  comma's & 'and')
+#     pattern = '|'.join(['and', ',']) 
+#     melted_df['varietystr']=melted_df['varietystr'].str.replace(pattern, '\n', regex=True)
+#     #expand multiple varieties in columns
+#     exp_varieties=melted_df['varietystr'].str.split('\n', expand=True)
+#     exp_varieties.columns=['variety_'+ str(c) for c in exp_varieties.columns]
+#     #match the varieties to the original
+#     for c in exp_varieties.columns: 
+#         melted_df[c]=exp_varieties[c] 
+#     ext_idvars=fullidvars+ ['quadrant']
+#     #melt again now on variety
+#     divwheel=(pd.melt(melted_df,id_vars=ext_idvars, value_vars=[c for c in exp_varieties.columns],  value_name='varietyname')
+#      .dropna(subset=['varietyname'])
+#      .sort_values(by=['ID_FFS_ID', '_submission_time', 'quadrant'], ascending=False)
+#     )
+#     return     divwheel
+
+# test=melt_varietywheel_on_crop(dft, cropnamecol='firstcrop', idvars=idvars, value_vars=value_vars)
+
+
+
+# #add the expanded varietis
+# df['A'] = df['A'].str.replace(pattern, 'CORP')
  
- str.replace('and', ', ') 
+#  str.replace('and', ', ') 
 
-#                     
-#melt df
-dft.melt()
-cropoccurence=pd.DataFrame(index=dft.index, columns=crops_by_country_d[country])
-cropoccurence['cropsselected']=dft['Select the crops (maximum two) for which you want to list the varieties']
-for cropsub in crops_by_country_d[country]:
-    cropoccurence[cropsub]=cropoccurence['cropsselected'].apply(lambda s: str.index(s, cropsub) if cropsub in s else np.nan)
+# #                     
+# #melt df
+# dft.melt()
+# cropoccurence=pd.DataFrame(index=dft.index, columns=crops_by_country_d[country])
+# cropoccurence['cropsselected']=dft['Select the crops (maximum two) for which you want to list the varieties']
+# for cropsub in crops_by_country_d[country]:
+#     cropoccurence[cropsub]=cropoccurence['cropsselected'].apply(lambda s: str.index(s, cropsub) if cropsub in s else np.nan)
 
-cropoccurence['firstcrop']= cropoccurence[crops_by_country_d[country]].idxmin(axis=1)
-cropoccurence['secondcrop']= cropoccurence[crops_by_country_d[country]].idxmax(axis=1)
-cropoccurence['secondcrop']=np.where(cropoccurence['secondcrop']==cropoccurence['firstcrop'], np.nan,cropoccurence['secondcrop'])
+# cropoccurence['firstcrop']= cropoccurence[crops_by_country_d[country]].idxmin(axis=1)
+# cropoccurence['secondcrop']= cropoccurence[crops_by_country_d[country]].idxmax(axis=1)
+# cropoccurence['secondcrop']=np.where(cropoccurence['secondcrop']==cropoccurence['firstcrop'], np.nan,cropoccurence['secondcrop'])
 
 
 
-df[['sequence', 'sub_sequence']].apply(lambda s: str.index(*s), axis=1)
-pd.Series({w: long_string.count(w) for w in word_list})
+# df[['sequence', 'sub_sequence']].apply(lambda s: str.index(*s), axis=1)
+# pd.Series({w: long_string.count(w) for w in word_list})
 
 
 
